@@ -57,7 +57,7 @@ jobs:
 
         # Se connecter à l'EC2 et exécuter les commandes de déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          cd /home/ubuntu/mon_projet_unet
+          cd /home/ubuntu/unet_api   # Assurez-vous que ce chemin est correct
           git pull
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
