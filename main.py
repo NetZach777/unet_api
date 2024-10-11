@@ -10,7 +10,7 @@ import io
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # Charger le modèle U-Net (ajuste le chemin vers ton modèle U-Net)
-MODEL_PATH = r"C:\Users\shash\Documents\projet python\api_unet\unet_light_model_weighted_data_normal.h5"
+MODEL_PATH = r"unet_api\unet_light_model_weighted_data_normal.h5"
 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 # Créer l'application FastAPI
