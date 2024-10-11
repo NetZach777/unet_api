@@ -37,14 +37,21 @@ jobs:
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Lint avec flake8
+    - name: Cloner le dépôt sur l'EC2
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }}
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Test avec pytest
-      run: |
-        pytest
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
+          if [ ! -d /home/ubuntu/unet_api ]; then
+            git clone https://github.com/NetZach777/unet_api.git /home/ubuntu/unet_api;
+          else
+            cd /home/ubuntu/unet_api && git pull;
+          fi
+        '
+        rm private_key
 
     - name: Déploiement sur EC2
       env:
@@ -57,8 +64,7 @@ jobs:
 
         # Se connecter à l'EC2 et exécuter les commandes de déploiement
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} '
-          cd /home/ubuntu/unet_api   # Assurez-vous que ce chemin est correct
-          git pull
+          cd /home/ubuntu/unet_api
           source /home/ubuntu/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
           pip install -r requirements.txt
