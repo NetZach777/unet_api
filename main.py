@@ -6,6 +6,7 @@ from PIL import Image, UnidentifiedImageError
 import numpy as np
 import io
 
+
 # Désactiver l'utilisation des GPU pour forcer TensorFlow à utiliser le CPU
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
