@@ -1,0 +1,67 @@
+name: Python application CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout du code source
+      uses: actions/checkout@v3
+      with:
+        lfs: true
+
+    - name: Configuration de Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.9"
+
+    - name: Tests et Lint (Optionnel)
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest
+        # Si tu as des tests, décommente la ligne suivante
+        # pytest
+
+    - name: Déploiement sur GCP
+      env:
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        HOSTNAME: ${{ secrets.HOST }}
+        USER_NAME: ${{ secrets.EC2_USER }} # Assure-toi que c'est xxxash911xxx
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} << 'EOF'
+          # 1. Aller dans le dossier ou cloner si inexistant
+          if [ ! -d ~/unet_api ]; then
+            git clone https://github.com/NetZach777/unet_api.git ~/unet_api
+            cd ~/unet_api
+          else
+            cd ~/unet_api
+            git pull
+          fi
+
+          # 2. Configurer Conda pour cette session
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate unet_api_env
+
+          # 3. Installer les dépendances (avec l'env actif)
+          pip install -r requirements.txt
+
+          # 4. GESTION DE LA RAM : Tuer l'ancien processus avant de lancer le nouveau
+          # On cherche le process qui utilise le port 8000
+          fuser -k 8000/tcp || true
+
+          # 5. Lancer l'API en arrière-plan
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+        EOF
+        
+        rm private_key
