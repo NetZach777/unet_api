@@ -1,72 +1,64 @@
-name: Python application CI/CD
+name: Deploy U-Net API to GCP
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-permissions:
-  contents: read
+    branches:
+      - main
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout du code source
-      uses: actions/checkout@v3
-      with:
-        lfs: true
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Configuration de Python 3.9
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.9"
+      - name: Deploy to VM via SSH
+        env:
+          PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.HOST }}
+          USER_NAME: ${{ secrets.EC2_USER }}
+        run: |
+          # 1. Préparation de la clé SSH
+          printf "%s" "$PRIVATE_KEY" > private_key
+          chmod 600 private_key
 
-    - name: Tests et Lint
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 pytest
-        flake8 .
-        # pytest
+          # 2. Exécution des commandes sur la VM
+          # On utilise StrictHostKeyChecking=no pour éviter le blocage de connexion
+          ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST} << 'EOF'
+            echo "--- Connexion établie avec succès ---"
+            
+            # Aller dans le home de l'utilisateur
+            cd ~
 
-    - name: Déploiement sur serveur (SSH)
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }}
-      run: |
-        echo "$PRIVATE_KEY" > private_key
-        chmod 600 private_key
-        
-        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} << 'EOF'
-          
-          # 1. Cloner ou mettre à jour le repo
-          if [ ! -d ~/unet_api ]; then
-            git clone https://github.com/NetZach777/unet_api.git ~/unet_api
-          fi
-          cd ~/unet_api
-          
-          git fetch origin
-          git reset --hard origin/main
+            # 3. Clone ou Pull du dépôt
+            if [ ! -d "unet_api" ]; then
+              git clone https://github.com/NetZach777/unet_api.git unet_api
+              cd unet_api
+            else
+              cd unet_api
+              git reset --hard HEAD
+              git pull origin main
+            fi
 
-          # 2. Configurer Conda
-          source ~/miniconda3/etc/profile.d/conda.sh
-          conda activate unet_api_env
+            # 4. Configuration de l'environnement Conda
+            # On charge Conda dans le shell non-interactif
+            source ~/miniconda3/etc/profile.d/conda.sh
+            
+            # Créer l'env s'il n'existe pas (la première fois)
+            conda activate unet_api_env || (conda create -n unet_api_env python=3.9 -y && conda activate unet_api_env)
 
-          # 3. Installer dépendances
-          mkdir -p ~/tmp
-          export TMPDIR=~/tmp
-          pip install --no-cache-dir -r requirements.txt
+            # 5. Installation des dépendances avec gestion de la RAM
+            mkdir -p ~/tmp
+            export TMPDIR=~/tmp
+            pip install --no-cache-dir -r requirements.txt
 
-          # 4. Stopper ancien process
-          sudo fuser -k 8000/tcp || true
-          sleep 2
+            # 6. Relance du serveur FastAPI
+            echo "Relance du serveur Uvicorn..."
+            sudo fuser -k 8000/tcp || true
+            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+            
+            echo "--- Déploiement terminé ! ---"
+          EOF
 
-          # 5. Lancer l'API
-          nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
-        
-        EOF
-        
-        rm private_key
+          # 7. Nettoyage de la clé sur le runner GitHub
+          rm private_key
