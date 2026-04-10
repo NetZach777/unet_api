@@ -33,9 +33,9 @@ jobs:
 
     - name: Déploiement sur serveur (SSH)
       env:
-        PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.USER }}
+        USER_NAME: ${{ secrets.EC2_USER }}
       run: |
         echo "$PRIVATE_KEY" > private_key
         chmod 600 private_key
