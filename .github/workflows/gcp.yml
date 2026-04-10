@@ -1,6 +1,5 @@
 name: Python application CI/CD
 
-
 on:
   push:
     branches: [ main ]
@@ -25,48 +24,49 @@ jobs:
       with:
         python-version: "3.9"
 
-    - name: Tests et Lint (Optionnel)
+    - name: Tests et Lint
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
+        flake8 .
         # pytest
 
-    - name: Déploiement sur GCP
+    - name: Déploiement sur serveur (SSH)
       env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         HOSTNAME: ${{ secrets.HOST }}
-        USER_NAME: ${{ secrets.EC2_USER }} 
+        USER_NAME: ${{ secrets.USER }}
       run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        echo "$PRIVATE_KEY" > private_key
+        chmod 600 private_key
         
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME} << 'EOF'
-          # 1. Aller dans le dossier ou cloner
+          
+          # 1. Cloner ou mettre à jour le repo
           if [ ! -d ~/unet_api ]; then
             git clone https://github.com/NetZach777/unet_api.git ~/unet_api
           fi
           cd ~/unet_api
           
-          # Nettoyer les changements locaux éventuels pour éviter les conflits au pull
-          git reset --hard HEAD
-          git pull origin main
+          git fetch origin
+          git reset --hard origin/main
 
           # 2. Configurer Conda
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate unet_api_env
 
-          # 3. INSTALLATION SÉCURISÉE (Le fameux TMPDIR pour le disque)
+          # 3. Installer dépendances
           mkdir -p ~/tmp
           export TMPDIR=~/tmp
           pip install --no-cache-dir -r requirements.txt
 
-          # 4. GESTION DU PROCESSUS
-          # On tue l'ancien uvicorn proprement
+          # 4. Stopper ancien process
           sudo fuser -k 8000/tcp || true
           sleep 2
 
-          # 5. Lancer l'API en arrière-plan
-          # On s'assure d'être dans le bon dossier pour charger le modèle
+          # 5. Lancer l'API
           nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+        
         EOF
         
         rm private_key
