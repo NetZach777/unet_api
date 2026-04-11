@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,50 +18,44 @@ jobs:
           PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           HOST: ${{ secrets.HOST }}
           USER_NAME: ${{ secrets.EC2_USER }}
+
         run: |
-          # 1. Préparation de la clé SSH
           printf "%s" "$PRIVATE_KEY" > private_key
           chmod 600 private_key
 
-          # 2. Exécution des commandes sur la VM
           ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST} << 'EOF'
-            echo "--- Connexion établie avec succès ---"
-            
-            # Charger Conda proprement pour le shell non-interactif
-            source ~/miniconda3/etc/profile.d/conda.sh
-            
-            # 3. Gestion du dossier et Git LFS
-            if [ ! -d "unet_api" ]; then
-              git clone https://github.com/NetZach777/unet_api.git unet_api
-              cd unet_api
-              git lfs install
-            else
-              cd unet_api
-              git reset --hard HEAD
-              git pull origin main
-            fi
-            
-            # Télécharger les fichiers volumineux (le modèle .h5)
-            git lfs pull
 
-            # 4. Activation de l'environnement
-            # On part du principe que tu l'as déjà créé manuellement comme on a vu
+            echo "🚀 Deploy start"
+
+            cd ~
+
+            # repo update propre
+            if [ ! -d "unet_api" ]; then
+              git clone https://github.com/NetZach777/unet_api.git
+            fi
+
+            cd unet_api
+            git pull origin main
+
+            # 🔥 FIX CONDA (important)
+            source ~/miniconda3/etc/profile.d/conda.sh
             conda activate unet_api_env
 
-            # 5. Installation des dépendances
-            # Utilisation de --no-cache-dir pour économiser la RAM
+            # install deps
             pip install --no-cache-dir -r requirements.txt
 
-            # 6. Relance du serveur FastAPI
-            echo "Nettoyage du port 8000..."
-            sudo fuser -k 8000/tcp || true
-            
-            echo "Lancement d'Uvicorn..."
-            # On utilise 'python -m uvicorn' pour être certain d'utiliser celui de l'env conda
-            nohup python -m uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
-            
-            echo "--- Déploiement terminé ! ---"
+            # stop old process
+            pkill -f uvicorn || true
+
+            # start API (conda python safe)
+            nohup python -m uvicorn main:app \
+              --host 0.0.0.0 \
+              --port 8000 \
+              --workers 1 \
+              > uvicorn.log 2>&1 &
+
+            echo "✅ Deploy done"
+
           EOF
 
-          # 7. Nettoyage
-          rm private_key
+          rm -f private_key
